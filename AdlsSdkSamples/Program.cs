@@ -19,7 +19,8 @@ namespace AdlsSdkSamples
         private static string clientAccountPath = "FILL-IN-HERE";
         private static string UserId = "FILL-IN-HERE";
         private static string Psswd = "FILL-IN-HERE";
-
+        private static string localFileTransferPath = @"C:\Data"; // Used for bulk transfer
+        private static string remoteFileTransferPath = @"/Data";  // Used for bulk transfer
         public static void Main(string[] args)
         {
             try
@@ -42,6 +43,8 @@ namespace AdlsSdkSamples
                 // Get Content summary using async operations
                 GetContentSummaryAsync(client2).GetAwaiter().GetResult();
 
+                // Bulk upload and download
+                RunFileTransfer(client2);
                 // Illustrate token refresh
                 TestTokenRefresh(client2);
             }
@@ -186,6 +189,43 @@ namespace AdlsSdkSamples
             {
                 await CreateDirRecursiveAsync(client, newPath + nextLevel + i, recursLevel - 1, noDirEntries, noFileEntries);
             }
+        }
+
+        // Bulk upload and download
+        private static void RunFileTransfer(AdlsClient client)
+        {
+            Directory.CreateDirectory(localFileTransferPath);
+            var fileName = localFileTransferPath + @"\testUploadFile.txt";
+            Console.WriteLine("Creating the test file to upload:");
+            using (var stream = new StreamWriter(new FileStream(fileName, FileMode.Create, FileAccess.ReadWrite)))
+            {
+                stream.WriteLine("Hello I am the first line of upload.");
+                stream.WriteLine("Hello I am the second line of upload.");
+            }
+            var destFile = remoteFileTransferPath + "/testremoteUploadFile.txt";
+            Console.WriteLine("Upload of the file:");
+            client.BulkUpload(fileName, destFile, 1); // Source and destination could also be directories
+            using (var readStream = new StreamReader(client.GetReadStream(destFile)))
+            {
+                string line;
+                while ((line = readStream.ReadLine()) != null)
+                {
+                    Console.WriteLine(line);
+                }
+            }
+            var localDestFile = localFileTransferPath + @"\testlocalDownloadFile.txt";
+            Console.WriteLine("Download of the uploaded file:");
+            client.BulkDownload(destFile, localDestFile, 1); // Source and destination could also be directories
+            using (var stream = new StreamReader(File.OpenRead(localDestFile)))
+            {
+                string line;
+                while ((line = stream.ReadLine()) != null)
+                {
+                    Console.WriteLine(line);
+                }
+            }
+            Directory.Delete(localFileTransferPath,true);
+            client.DeleteRecursive(remoteFileTransferPath);
         }
 
         private static void PrintAdlsException(AdlsException exp)
