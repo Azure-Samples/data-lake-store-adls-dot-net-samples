@@ -15,3 +15,4 @@ This sample demonstrates how to interact with Azure Data Lake Store service usin
 - Concatenate two files.
 - Use async operations to create a sample hiererchial directory tree on store and then get the content summary.
 - Illustrate token refresh.
+- Illustrate Bulk upload and download
