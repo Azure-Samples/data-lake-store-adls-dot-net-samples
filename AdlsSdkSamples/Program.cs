@@ -5,6 +5,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Azure.DataLake.Store;
+using Microsoft.Azure.DataLake.Store.Acl;
+using Microsoft.Azure.DataLake.Store.AclTools;
 using Microsoft.IdentityModel.Clients.ActiveDirectory;
 using Microsoft.Rest;
 using Microsoft.Rest.Azure.Authentication;
@@ -21,6 +23,8 @@ namespace AdlsSdkSamples
         private static string Psswd = "FILL-IN-HERE";
         private static string localFileTransferPath = @"C:\Data"; // Used for bulk transfer
         private static string remoteFileTransferPath = @"/Data";  // Used for bulk transfer
+        private static string aclUserId = "FILL-IN-HERE";         // App object Id used for demonstrating recursive Acl change
+        private static string localFilePropertyDumpPath = @"C:\Data"; // Used for Acl/DiskUsage Dump
         public static void Main(string[] args)
         {
             try
@@ -45,6 +49,8 @@ namespace AdlsSdkSamples
 
                 // Bulk upload and download
                 RunFileTransfer(client2);
+                // Change Acl and get acl and disk usage properties
+                SetAclAndGetFileProperties(client2);
                 // Illustrate token refresh
                 TestTokenRefresh(client2);
             }
@@ -224,10 +230,29 @@ namespace AdlsSdkSamples
                     Console.WriteLine(line);
                 }
             }
-            Directory.Delete(localFileTransferPath,true);
+            Directory.Delete(localFileTransferPath, true);
             client.DeleteRecursive(remoteFileTransferPath);
         }
 
+        private static void SetAclAndGetFileProperties(AdlsClient client)
+        {
+            var aclEntry = new List<AclEntry>()
+            {
+                new AclEntry(AclType.user, aclUserId, AclScope.Access, AclAction.ReadExecute)
+            };
+            Console.WriteLine("Adding Acl recursively to /");
+            client.ChangeAcl("/", aclEntry, RequestedAclType.ModifyAcl);
+            Console.WriteLine($"Dumping Acl and disk usage information recursively to {localFilePropertyDumpPath}\\dump1.txt");
+            // Dump the Acl and disk usage to a local file. If you want to dump it to ADL then pass false for 5th parameter and pass a adl path in 2nd parameter.
+            // Verify the Acl properties are set contain the AclUserId
+            client.GetFileProperties("/", true, $"{localFilePropertyDumpPath}\\dump1.txt", true, true);
+            Console.WriteLine("Removing Acl recursively from /");
+            client.ChangeAcl("/", aclEntry, RequestedAclType.RemoveAcl);
+            Console.WriteLine($"Dumping Acl and disk usage information recursively to {localFilePropertyDumpPath}\\dump2.txt");
+            // Now the Acl will not contain the AclUserId
+            client.GetFileProperties("/", true, $"{localFilePropertyDumpPath}\\dump2.txt", true, true);
+            Directory.Delete(localFilePropertyDumpPath, true);
+        }
         private static void PrintAdlsException(AdlsException exp)
         {
             Console.WriteLine("ADLException");

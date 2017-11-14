@@ -4,7 +4,7 @@ platforms: .NET
 author: rahuldutta90
 ---
 
-# Azure Data Lake Store: Getting Started
+# Azure Data Lake Store .NET: Additional Samples 
 
 This sample demonstrates how to interact with Azure Data Lake Store service using the .NET SDK. The sample walk through following:
 - Acquire an Azure ActiveDirectory OAuth token (ServiceClientCredential) using username and password.
@@ -16,3 +16,5 @@ This sample demonstrates how to interact with Azure Data Lake Store service usin
 - Use async operations to create a sample hiererchial directory tree on store and then get the content summary.
 - Illustrate token refresh.
 - Illustrate Bulk upload and download
+- Illustrate recursive acl processor
+- Illustrate recursive acl and disk usage dump
