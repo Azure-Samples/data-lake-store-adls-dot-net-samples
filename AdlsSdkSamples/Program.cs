@@ -29,7 +29,7 @@ namespace AdlsSdkSamples
         {
             try
             {
-                // Acquire token and create client using user id and password
+                // Acquire token and create client using user id and password - Shown for illustration purposes, Comment following two lines if you are not authenticating with userid and password
                 ServiceClientCredentials clientCreds1 = UserTokenProvider.LoginSilentAsync(clientId, domain, UserId, Psswd).GetAwaiter().GetResult();
                 AdlsClient client1 = AdlsClient.CreateClient(clientAccountPath, clientCreds1);
 
