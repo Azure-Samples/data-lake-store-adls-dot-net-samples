@@ -4,9 +4,9 @@ platforms: .NET
 author: rahuldutta90
 ---
 
-# Azure Data Lake Store .NET: Additional Samples 
+# Azure Data Lake Storage Gen1 .NET: Additional Samples 
 
-This sample demonstrates how to interact with Azure Data Lake Store service using the .NET SDK. The sample walk through following:
+This sample demonstrates how to interact with the Azure Data Lake Storage Gen1 service using the .NET SDK. The sample walks through the following:
 - Acquire an Azure ActiveDirectory OAuth token (ServiceClientCredential) using username and password.
 - Acquire an Azure ActiveDirectory OAuth token (ServiceClientCredential) using client id and client secret.
 - Create client using the account path and Azure ActiveDirectory OAuth token.
