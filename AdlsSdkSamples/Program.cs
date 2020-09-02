@@ -91,8 +91,7 @@ namespace AdlsSdkSamples
                 byte[] readData = new byte[1024];
            
                 // Read 40 bytes at this offset
-                int readBytes = 
-                    .Read(readData, 25, 40);
+                int readBytes = readStream.Read(readData, 25, 40);
                 Console.WriteLine("Read output of 40 bytes from offset 25: " + Encoding.UTF8.GetString(readData, 0, readBytes));
             }
         }
