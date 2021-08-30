@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Azure;
 using Azure.Identity;
-using Azure.Storage;
 using Azure.Storage.Files.DataLake;
 using Azure.Storage.Files.DataLake.Models;
 
@@ -32,7 +31,7 @@ namespace AdlsSdkSamples
             DataLakeFileSystemClient filesystemclient = serviceClient.GetFileSystemClient(name);
 
             filesystemclient.CreateIfNotExists();
-            try { 
+            try {
                 // Perform write with flush and read with seek
                 PerformWriteFlushReadSeek(filesystemclient);
 
@@ -89,13 +88,13 @@ namespace AdlsSdkSamples
             using (var readStream =fileContents.Value.Content)
             {
                 byte[] readData = new byte[1024];
-           
+
                 // Read 40 bytes at this offset
                 int readBytes = readStream.Read(readData, 25, 40);
                 Console.WriteLine("Read output of 40 bytes from offset 25: " + Encoding.UTF8.GetString(readData, 0, readBytes));
             }
         }
-       
+
         private static void TestTokenRefresh(DataLakeFileSystemClient client)
         {
             string path = "/Test/TokenRefresh.txt";
@@ -168,6 +167,7 @@ namespace AdlsSdkSamples
             Console.WriteLine("Upload of the file:");
             file.Upload(fileName); // Source and destination could also be directories
             Response<FileDownloadInfo> fileContents = file.Read();
+            Response<FileDownloadInfo> fileContentDown = file.Read();
             using (var readStream = new StreamReader(fileContents.Value.Content))
             {
                 string line;
@@ -180,13 +180,13 @@ namespace AdlsSdkSamples
             Console.WriteLine("Download of the uploaded file:");
             using (FileStream stream = File.OpenWrite(localDestFile))
             {
-                fileContents.Value.Content.CopyTo(stream);
+                fileContentDown.Value.Content.CopyTo(stream);
             }
             using (var stream = new StreamReader(File.OpenRead(localDestFile)))
             {
                 string line;
                 while ((line = stream.ReadLine()) != null)
-                {
+                {  
                     Console.WriteLine(line);
                 }
             }
