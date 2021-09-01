@@ -84,8 +84,7 @@ namespace AdlsSdkSamples
             }
 
             // Read the file
-            Response<FileDownloadInfo> fileContents = file.Read();
-            using (var readStream =fileContents.Value.Content)
+            using (var readStream = file.OpenRead())
             {
                 byte[] readData = new byte[1024];
 
@@ -105,13 +104,12 @@ namespace AdlsSdkSamples
                 file.Upload(stream, true);
             }
 
-            // Wait 65 mins
-            Console.WriteLine("Wait for 65 minutes to illustrate token refresh");
-            Thread.Sleep(65 * 60 * 1000);
+            // Wait 1 mins
+            Console.WriteLine("The token is refreshing...");
+            Thread.Sleep(60 * 1000);
 
             // Read file - this still works, because token is internally refreshed
-            Response<FileDownloadInfo> fileContents = file.Read();
-            using (var readStream = new StreamReader(fileContents.Value.Content))
+            using (var readStream = new StreamReader(file.OpenRead()))
             {
                 string line;
                 while ((line = readStream.ReadLine()) != null)
@@ -167,7 +165,8 @@ namespace AdlsSdkSamples
             Console.WriteLine("Upload of the file:");
             file.Upload(fileName); // Source and destination could also be directories
             Response<FileDownloadInfo> fileContents = file.Read();
-            Response<FileDownloadInfo> fileContentDown = file.Read();
+            MemoryStream fileContentDown = new MemoryStream();
+            fileContents.Value.Content.CopyTo(fileContentDown);
             using (var readStream = new StreamReader(fileContents.Value.Content))
             {
                 string line;
@@ -178,10 +177,12 @@ namespace AdlsSdkSamples
             }
             var localDestFile = localFileTransferPath + @"\testlocalDownloadFile.txt";
             Console.WriteLine("Download of the uploaded file:");
+            
             using (FileStream stream = File.OpenWrite(localDestFile))
             {
-                fileContentDown.Value.Content.CopyTo(stream);
+                fileContentDown.CopyTo(stream);
             }
+            fileContentDown.Close();
             using (var stream = new StreamReader(File.OpenRead(localDestFile)))
             {
                 string line;
