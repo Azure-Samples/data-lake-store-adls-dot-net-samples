@@ -51,37 +51,19 @@ namespace AdlsSdkSamples
         }
         private static void PerformWriteFlushReadSeek(DataLakeFileSystemClient client)
         {
-            long length;
             string fileName = "/Test/dir1/testFilename1.txt";
 
             DataLakeFileClient file = client.GetFileClient(fileName);
 
-            // Create a file. It creates the parent directories /Test/dir1
-            using (var stream = new MemoryStream())
-            {
-                // Write byte-array to stream
-                byte[] writeData = Encoding.UTF8.GetBytes("This is the first line.\n");
-                stream.Write(writeData, 0, writeData.Length);
-                // Flush the data in buffer to server
-                stream.Flush();
-                writeData = Encoding.UTF8.GetBytes("This is the second line.\n");
-                stream.Write(writeData, 0, writeData.Length);
-                length = stream.Length;
-                stream.Seek(0, SeekOrigin.Begin);
-                file.Upload(stream, true);
-            }// Closing the stream flushes remaining data
+            // Create the file
+            Stream stream = BinaryData.FromString("This is the first line.\nThis is the second line.\n").ToStream();
+            long length = stream.Length;
+            file.Upload(stream, true);
 
             // Append to the file
-            using (var stream = new MemoryStream())
-            {
-                byte[] writeData = Encoding.UTF8.GetBytes("This is the third line.\n");
-                stream.Write(writeData, 0, writeData.Length);
-                writeData = Encoding.UTF8.GetBytes("This is the fourth line.\n");
-                stream.Write(writeData, 0, writeData.Length);
-                stream.Seek(0, SeekOrigin.Begin);
-                file.Append(stream, length);
-                file.Flush(length + stream.Length);
-            }
+            stream = BinaryData.FromString("This is the third line.\nThis is the fourth line.\n").ToStream();
+            file.Append(stream, length);
+            file.Flush(length + stream.Length);
 
             // Read the file
             using (var readStream = file.OpenRead())
@@ -99,10 +81,8 @@ namespace AdlsSdkSamples
             string path = "/Test/TokenRefresh.txt";
             DataLakeFileClient file = client.GetFileClient(path);
             // Create file
-            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes("This is the first file.")))
-            {
-                file.Upload(stream, true);
-            }
+            file.Upload(
+                 BinaryData.FromString("This is the first file.").ToStream(), overwrite: true);
 
             // Wait 1 mins
             Console.WriteLine("The token is refreshing...");
@@ -177,7 +157,7 @@ namespace AdlsSdkSamples
             }
             var localDestFile = localFileTransferPath + @"\testlocalDownloadFile.txt";
             Console.WriteLine("Download of the uploaded file:");
-            
+
             using (FileStream stream = File.OpenWrite(localDestFile))
             {
                 fileContentDown.CopyTo(stream);
@@ -187,7 +167,7 @@ namespace AdlsSdkSamples
             {
                 string line;
                 while ((line = stream.ReadLine()) != null)
-                {  
+                {
                     Console.WriteLine(line);
                 }
             }
