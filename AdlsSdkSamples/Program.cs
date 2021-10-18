@@ -4,12 +4,10 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Azure.DataLake.Store;
-using Microsoft.Azure.DataLake.Store.Acl;
-using Microsoft.Azure.DataLake.Store.AclTools;
-using Microsoft.IdentityModel.Clients.ActiveDirectory;
-using Microsoft.Rest;
-using Microsoft.Rest.Azure.Authentication;
+using Azure;
+using Azure.Identity;
+using Azure.Storage.Files.DataLake;
+using Azure.Storage.Files.DataLake.Models;
 
 namespace AdlsSdkSamples
 {
@@ -18,135 +16,80 @@ namespace AdlsSdkSamples
         private static string clientId = "FILL-IN-HERE";            // Also called application id in portal
         private static string clientSecret = "FILL-IN-HERE";
         private static string domain = "FILL-IN-HERE";              // Also called tenant Id
-        private static string clientAccountPath = "FILL-IN-HERE";
-        private static string UserId = "FILL-IN-HERE";
-        private static string Psswd = "FILL-IN-HERE";
+        private static string serviceUri = "FILL-IN-HERE";
         private static string localFileTransferPath = @"C:\Data"; // Used for bulk transfer
         private static string remoteFileTransferPath = @"/Data";  // Used for bulk transfer
-        private static string aclUserId = "FILL-IN-HERE";         // App object Id used for demonstrating recursive Acl change
-        private static string localFilePropertyDumpPath = @"C:\Data"; // Used for Acl/DiskUsage Dump
         public static void Main(string[] args)
         {
-            try
-            {
-                // Acquire token and create client using user id and password - Shown for illustration purposes, Comment following two lines if you are not authenticating with userid and password
-                ServiceClientCredentials clientCreds1 = UserTokenProvider.LoginSilentAsync(clientId, domain, UserId, Psswd).GetAwaiter().GetResult();
-                AdlsClient client1 = AdlsClient.CreateClient(clientAccountPath, clientCreds1);
+            // Create Client Secret Credential
+            var creds = new ClientSecretCredential(domain, clientId, clientSecret);
 
-                // Acquire token and create client using client secret and client id
-                var creds = new ClientCredential(clientId, clientSecret);
-                ServiceClientCredentials clientCreds2 = ApplicationTokenProvider.LoginSilentAsync(domain, creds).GetAwaiter().GetResult();
-                AdlsClient client2 = AdlsClient.CreateClient(clientAccountPath, clientCreds2);
+            // Create data lake file service client object
+            DataLakeServiceClient serviceClient = new DataLakeServiceClient(new Uri(serviceUri), creds);
+            var name = "sample-filesystem" + Guid.NewGuid().ToString("n").Substring(0, 8);
+            // Create data lake file system client object
+            DataLakeFileSystemClient filesystemclient = serviceClient.GetFileSystemClient(name);
 
+            filesystemclient.CreateIfNotExists();
+            try {
                 // Perform write with flush and read with seek
-                PerformWriteFlushReadSeek(client2);
+                PerformWriteFlushReadSeek(filesystemclient);
 
-                // Concatenate two files
-                PerformConcat(client2);
-
-                // Get Content summary using async operations
-                GetContentSummaryAsync(client2).GetAwaiter().GetResult();
-
-                // Bulk upload and download
-                RunFileTransfer(client2);
-                // Change Acl and get acl and disk usage properties
-                SetAclAndGetFileProperties(client2);
+                // Upload and download
+                RunFileTransfer(filesystemclient);
+                // Change Acl and get acl properties
+                SetAclAndGetFileProperties(filesystemclient);
                 // Illustrate token refresh
-                TestTokenRefresh(client2);
+                TestTokenRefresh(filesystemclient);
             }
-            catch (AdlsException e)
+            finally
             {
-                PrintAdlsException(e);
+                filesystemclient.Delete();
             }
             Console.WriteLine("Done. Press ENTER to continue ...");
             Console.ReadLine();
         }
-        private static void PerformWriteFlushReadSeek(AdlsClient client)
+        private static void PerformWriteFlushReadSeek(DataLakeFileSystemClient client)
         {
-            // Illustrate stream operations of Adls
-
             string fileName = "/Test/dir1/testFilename1.txt";
 
-            // Create a file. It creates the parent directories /Test/dir1
-            using (var createStream = client.CreateFile(fileName, IfExists.Overwrite))
-            {
-                // Write byte-array to stream
-                byte[] writeData = Encoding.UTF8.GetBytes("This is the first line.\n");
-                createStream.Write(writeData, 0, writeData.Length);
-                // Flush the data in buffer to server
-                createStream.Flush();
-                writeData = Encoding.UTF8.GetBytes("This is the second line.\n");
-                createStream.Write(writeData, 0, writeData.Length);
-            } // Closing the stream flushes remaining data
+            DataLakeFileClient file = client.GetFileClient(fileName);
+
+            // Create the file
+            Stream stream = BinaryData.FromString("This is the first line.\nThis is the second line.\n").ToStream();
+            long length = stream.Length;
+            file.Upload(stream, true);
 
             // Append to the file
-            using (var appendStream = client.GetAppendStream(fileName))
-            {
-                byte[] writeData = Encoding.UTF8.GetBytes("This is the third line.\n");
-                appendStream.Write(writeData, 0, writeData.Length);
-                writeData = Encoding.UTF8.GetBytes("This is the fourth line.\n");
-                appendStream.Write(writeData, 0, writeData.Length);
-            }
+            stream = BinaryData.FromString("This is the third line.\nThis is the fourth line.\n").ToStream();
+            file.Append(stream, length);
+            file.Flush(length + stream.Length);
 
             // Read the file
-            using (var readStream = client.GetReadStream(fileName))
+            using (var readStream = file.OpenRead())
             {
                 byte[] readData = new byte[1024];
 
-                // Seek to offset 24
-                readStream.Seek(24, SeekOrigin.Current);
-
                 // Read 40 bytes at this offset
-                int readBytes = readStream.Read(readData, 0, 40);
+                int readBytes = readStream.Read(readData, 25, 40);
                 Console.WriteLine("Read output of 40 bytes from offset 25: " + Encoding.UTF8.GetString(readData, 0, readBytes));
-
             }
         }
-        private static void PerformConcat(AdlsClient client)
-        {
-            // Create two files
-            string file1 = "/dir1/testConcat1.txt";
-            string file2 = "/dir1/testConcat2.txt";
-            string destFile = "/dir1/testConcat.txt";
-            using (var createStream = new StreamWriter(client.CreateFile(file1, IfExists.Overwrite)))
-            {
-                createStream.WriteLine("This is the first file.");
-            }
-            using (var createStream = new StreamWriter(client.CreateFile(file2, IfExists.Overwrite)))
-            {
-                createStream.WriteLine("This is the second file.");
-            }
 
-            // Concatenate the files
-            List<string> list = new List<string> { file1, file2 };
-            client.ConcatenateFiles(destFile, list);
-
-            // Print the resultant combined file
-            using (var readStream = new StreamReader(client.GetReadStream(destFile)))
-            {
-                string line;
-                while ((line = readStream.ReadLine()) != null)
-                {
-                    Console.WriteLine(line);
-                }
-            }
-        }
-        private static void TestTokenRefresh(AdlsClient client)
+        private static void TestTokenRefresh(DataLakeFileSystemClient client)
         {
             string path = "/Test/TokenRefresh.txt";
-
+            DataLakeFileClient file = client.GetFileClient(path);
             // Create file
-            using (var ostreamWriter = new StreamWriter(client.CreateFile(path, IfExists.Overwrite, "")))
-            {
-                ostreamWriter.WriteLine("This is first line.");
-            }
+            file.Upload(
+                 BinaryData.FromString("This is the first file.").ToStream(), overwrite: true);
 
-            // Wait 65 mins
-            Console.WriteLine("Wait for 65 minutes to illustrate token refresh");
-            Thread.Sleep(65 * 60 * 1000);
+            // Wait 1 mins
+            Console.WriteLine("The token is refreshing...");
+            Thread.Sleep(60 * 1000);
 
             // Read file - this still works, because token is internally refreshed
-            using (var readStream = new StreamReader(client.GetReadStream(path)))
+            using (var readStream = new StreamReader(file.OpenRead()))
             {
                 string line;
                 while ((line = readStream.ReadLine()) != null)
@@ -155,34 +98,23 @@ namespace AdlsSdkSamples
                 }
             }
 
-        }
-
-        private static async Task GetContentSummaryAsync(AdlsClient client)
-        {
-            await client.DeleteRecursiveAsync("/a");
-
-            Console.WriteLine("Build a sample hierarchical directory tree");
-            await CreateDirRecursiveAsync(client, "/a", 3, 3, 1);
-
-            Console.WriteLine("Retrieve the content summary");
-            ContentSummary summary = client.GetContentSummary("/a");
-            Console.WriteLine($"Directory Count: {summary.DirectoryCount}");
-            Console.WriteLine($"File Count: {summary.FileCount}");
-            Console.WriteLine($"Total Size: {summary.SpaceConsumed}");
         }
 
         // Create a sample hierarchical directory tree using async operations
-        private static async Task CreateDirRecursiveAsync(AdlsClient client, string path, int recursLevel, int noDirEntries, int noFileEntries)
+        private static async Task CreateDirRecursiveAsync(DataLakeFileSystemClient client, string path, int recursLevel, int noDirEntries, int noFileEntries)
         {
             await client.CreateDirectoryAsync(path);
+            byte[] writeData = Encoding.UTF8.GetBytes("This is the first line.\n");
             string[] str = path.Split('/');
             char nextLevel = str[str.Length - 1][0];
             nextLevel++;
             for (int i = 0; i < noFileEntries; i++)
             {
-                using (var ostream = new StreamWriter(await client.CreateFileAsync(path + "/" + nextLevel + i + "File.txt", IfExists.Overwrite, "")))
+                DataLakeFileClient file = client.GetFileClient(path + "/" + nextLevel + i + "File.txt");
+
+                using (var stream = new MemoryStream(writeData))
                 {
-                    await ostream.WriteLineAsync("This is first line.");
+                    file.Upload(stream, true);
                 }
             }
             if (recursLevel == 0)
@@ -198,7 +130,7 @@ namespace AdlsSdkSamples
         }
 
         // Bulk upload and download
-        private static void RunFileTransfer(AdlsClient client)
+        private static void RunFileTransfer(DataLakeFileSystemClient client)
         {
             Directory.CreateDirectory(localFileTransferPath);
             var fileName = localFileTransferPath + @"\testUploadFile.txt";
@@ -209,9 +141,13 @@ namespace AdlsSdkSamples
                 stream.WriteLine("Hello I am the second line of upload.");
             }
             var destFile = remoteFileTransferPath + "/testremoteUploadFile.txt";
+            DataLakeFileClient file = client.GetFileClient(destFile);
             Console.WriteLine("Upload of the file:");
-            client.BulkUpload(fileName, destFile, 1); // Source and destination could also be directories
-            using (var readStream = new StreamReader(client.GetReadStream(destFile)))
+            file.Upload(fileName); // Source and destination could also be directories
+            Response<FileDownloadInfo> fileContents = file.Read();
+            MemoryStream fileContentDown = new MemoryStream();
+            fileContents.Value.Content.CopyTo(fileContentDown);
+            using (var readStream = new StreamReader(fileContents.Value.Content))
             {
                 string line;
                 while ((line = readStream.ReadLine()) != null)
@@ -221,7 +157,12 @@ namespace AdlsSdkSamples
             }
             var localDestFile = localFileTransferPath + @"\testlocalDownloadFile.txt";
             Console.WriteLine("Download of the uploaded file:");
-            client.BulkDownload(destFile, localDestFile, 1); // Source and destination could also be directories
+
+            using (FileStream stream = File.OpenWrite(localDestFile))
+            {
+                fileContentDown.CopyTo(stream);
+            }
+            fileContentDown.Close();
             using (var stream = new StreamReader(File.OpenRead(localDestFile)))
             {
                 string line;
@@ -231,38 +172,23 @@ namespace AdlsSdkSamples
                 }
             }
             Directory.Delete(localFileTransferPath, true);
-            client.DeleteRecursive(remoteFileTransferPath);
+            client.DeleteDirectory(remoteFileTransferPath);
         }
 
-        private static void SetAclAndGetFileProperties(AdlsClient client)
+        private static void SetAclAndGetFileProperties(DataLakeFileSystemClient client)
         {
-            var aclEntry = new List<AclEntry>()
-            {
-                new AclEntry(AclType.user, aclUserId, AclScope.Access, AclAction.ReadExecute)
-            };
-            Console.WriteLine("Adding Acl recursively to /");
-            client.ChangeAcl("/", aclEntry, RequestedAclType.ModifyAcl);
-            Console.WriteLine($"Dumping Acl and disk usage information recursively to {localFilePropertyDumpPath}\\dump1.txt");
-            // Dump the Acl and disk usage to a local file. If you want to dump it to ADL then pass false for 5th parameter and pass a adl path in 2nd parameter.
-            // Verify the Acl properties are set contain the AclUserId
-            client.GetFileProperties("/", true, $"{localFilePropertyDumpPath}\\dump1.txt", true, true);
-            Console.WriteLine("Removing Acl recursively from /");
-            client.ChangeAcl("/", aclEntry, RequestedAclType.RemoveAcl);
-            Console.WriteLine($"Dumping Acl and disk usage information recursively to {localFilePropertyDumpPath}\\dump2.txt");
-            // Now the Acl will not contain the AclUserId
-            client.GetFileProperties("/", true, $"{localFilePropertyDumpPath}\\dump2.txt", true, true);
-            Directory.Delete(localFilePropertyDumpPath, true);
-        }
-        private static void PrintAdlsException(AdlsException exp)
-        {
-            Console.WriteLine("ADLException");
-            Console.WriteLine($"   Http Status: {exp.HttpStatus}");
-            Console.WriteLine($"   Http Message: {exp.HttpMessage}");
-            Console.WriteLine($"   Remote Exception Name: {exp.RemoteExceptionName}");
-            Console.WriteLine($"   Server Trace Id: {exp.TraceId}");
-            Console.WriteLine($"   Exception Message: {exp.Message}");
-            Console.WriteLine($"   Exception Stack Trace: {exp.StackTrace}");
-            Console.WriteLine();
+            DataLakeFileClient fileClient = client.GetFileClient("sample.txt");
+            fileClient.Create();
+
+            // Set Access Control List
+            IList<PathAccessControlItem> accessControlList
+                = PathAccessControlExtensions.ParseAccessControlList("user::rwx,group::r--,mask::rwx,other::---");
+            fileClient.SetAccessControlList(accessControlList);
+            PathAccessControl accessControlResponse = fileClient.GetAccessControl();
+            Console.WriteLine($"User: {accessControlResponse.Owner}");
+            Console.WriteLine($"Group: {accessControlResponse.Group}");
+            Console.WriteLine($"Permissions: {accessControlResponse.Permissions}");
         }
     }
 }
+
